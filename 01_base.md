@@ -157,3 +157,89 @@ with Session(engine) as session:
 with Session(engine) as session:
     session.get(Hero, 1)
 ```
+
+## 7. Offect 和 Limit
+
+```python
+def select_heroes():
+    with Session(engine) as session:
+        statement = select(Hero).where(Hero.age > 32).offset(1).limit(2)
+        results = session.exec(statement)
+        heroes = results.all()
+        print(heroes)
+```
+
+## 8. 更新数据
+
+1. 查找数据对象
+2. 修改数据对象
+3. 将修改后的数据对象加入 session
+4. session.commit() 提交修改
+
+```python
+with Session(engine) as session:
+    statement = select(Hero).where(Hero.name == "Spider-Boy")
+    results = session.exec(statement)
+    hero_1 = results.one()
+    print("Hero 1:", hero_1)
+
+    statement = select(Hero).where(Hero.name == "Captain North America")
+    results = session.exec(statement)
+    hero_2 = results.one()
+    print("Hero 2:", hero_2)
+
+    hero_1.age = 16
+    hero_1.name = "Spider-Youngster"
+    # 将更新后的对象加入 session
+    session.add(hero_1)
+
+    hero_2.name = "Captain North America Except Canada"
+    hero_2.age = 110
+    # 将更新后的对象加入 session
+    session.add(hero_2)
+
+    # 同时更新多条数据
+    session.commit()
+    # 刷新数据
+    session.refresh(hero_1)
+    session.refresh(hero_2)
+
+    print("Updated hero 1:", hero_1)
+    print("Updated hero 2:", hero_2)
+```
+
+## 9. 删除数据
+
+1. 查找数据对象
+2. session.delete() 删除数据对象
+3. session.commit() 提交删除
+
+```python
+
+with Session(engine) as session:
+    statement = select(Hero).where(Hero.name == "Spider-Youngster")
+    results = session.exec(statement)
+    hero = results.one()
+    print("Hero: ", hero)
+
+    session.delete(hero)
+    session.commit()
+```
+
+## 10. 表关联
+
+### 10.1 定义外键
+
+```python
+class Team(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    name: str = Field(index=True)
+    headquarters: str
+
+class Hero(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    name: str = Field(index=True)
+    secret_name: str
+    age: int | None = Field(default=None, index=True)
+    team_id: int|None = Field(default=None,foreign_key = "team.id")
+```
