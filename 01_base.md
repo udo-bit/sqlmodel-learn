@@ -139,3 +139,21 @@ class Hero(SQLModel, table=True):
     secret_name: str
     age: int | None = Field(default=None, index=True)
 ```
+
+## 6. 读取一行数据
+
+- first() 读取第一行数据,为空时返回 None,为空或多于一行不报错
+- one() 读取一行数据,为空时报错,多于一行也报错
+- get() 根据 id 获取数据
+
+```python
+# 读取第一行数据
+with Session(engine) as session:
+    session.exec(select(Heror).where(Hero.id == 1)).first()
+# 仅有一条数据，为空或多于一条数据都会报错
+with Session(engine) as session:
+    session.exec(select(Heror).where(Hero.id == 1)).one()
+# 根据id获取数据
+with Session(engine) as session:
+    session.get(Hero, 1)
+```
