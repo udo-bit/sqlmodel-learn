@@ -270,7 +270,10 @@ with Session(engine) as session:
 
 ```python
 with Session(engine) as session:
-    statement = select(Hero, Team).join(Team, isouter=True)
+    # Hero左连接Team
+    statement = select(Hero, Team).join(Team,Hero.id == Team.id isouter=True)
+    # Hero右连接Team
+    # statement = select(Hero, Team).join(Hero, Hero.id == Team.id, isouter=True)
     results = session.exec(statement)
     for hero, team in results:
         print("Hero:", hero, "Team:", team)
