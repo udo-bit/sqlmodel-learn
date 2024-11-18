@@ -9,12 +9,18 @@ class Hero(SQLModel,table=True):
     name:str
     sec_name:str
     age:Optional[int] = None
-ids = [31,32]
+    team_id:Optional[int] = Field(default=None,foreign_key="team.id")
+
+class Team(SQLModel,table=True):
+    id:Optional[int] = Field(default=None,primary_key=True)
+    name:str
+
+
 with Session(engine) as session:
-    stmt = select(Hero).where(Hero.id.in_(ids))
+    stmt = session.select(Hero,Team).left_join(Team).on(Hero.team_id == Team.id)
     heroes = session.exec(stmt)
 
-    for hero in heroes:
+    for hero,team in heroes:
         print(hero)
 
 

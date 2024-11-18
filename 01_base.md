@@ -243,3 +243,36 @@ class Hero(SQLModel, table=True):
     age: int | None = Field(default=None, index=True)
     team_id: int|None = Field(default=None,foreign_key = "team.id")
 ```
+
+### 10.2 内连接
+
+```python
+with Session(engine) as session:
+    # 方式一：join
+    # 将 Hero和Team同时放入select中为了在结果中能引用到Team
+    # 省略on,因为Hero中有team_id字段，Team中有id字段，定义了外键
+    statement = select(Hero, Team).join(Team)
+    results = session.exec(statement)
+    # 结果是一个包含Hero和Team的元组的可迭代对象
+    for hero, team in results:
+        print("Hero:", hero, "Team:", team)
+    # 方式二：
+    with Session(engine) as session:
+        statement = select(Hero, Team).where(Hero.team_id == Team.id)
+        results = session.exec(statement)
+        for hero, team in results:
+            print("Hero:", hero, "Team:", team)
+```
+
+### 10.3 外连接
+
+- 使用 isouter=True 表示外连接
+
+```python
+with Session(engine) as session:
+    statement = select(Hero, Team).join(Team, isouter=True)
+    results = session.exec(statement)
+    for hero, team in results:
+        print("Hero:", hero, "Team:", team)
+
+```
