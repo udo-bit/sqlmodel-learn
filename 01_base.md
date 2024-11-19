@@ -279,3 +279,359 @@ with Session(engine) as session:
         print("Hero:", hero, "Team:", team)
 
 ```
+
+### 10.4 定义关联属性
+
+```python
+class Team(SQLModel,table=True):
+    id:Optional[int] = Field(default=None,primary_key=True)
+    name:str
+    heroes:List["Hero"] = Relationship(back_populates="team")
+
+class Hero(SQLModel,table=True):
+    id:Optional[int] = Field(default=None,primary_key=True)
+    name:str
+    sec_name:str
+    age:Optional[int] = None
+    team_id:Optional[int] = Field(default=None,foreign_key="team.id")
+    team: Team |None = Relationship(back_populates="heroes")
+```
+
+### 10.5 通过关联属性添加数据
+
+- 不需要再单独对 Team 进行 add 和 commit，直接对 Hero 进行添加即可,反之亦然
+
+```python
+with Session(engine) as session:
+    team_preventers = Team(name="Preventers", headquarters="Sharp Tower")
+    team_z_force = Team(name="Z-Force", headquarters="Sister Margaret's Bar")
+
+    hero_deadpond = Hero(
+        name="Deadpond", secret_name="Dive Wilson", team=team_z_force
+    )
+    hero_rusty_man = Hero(
+        name="Rusty-Man", secret_name="Tommy Sharp", age=48, team=team_preventers
+    )
+    hero_spider_boy = Hero(name="Spider-Boy", secret_name="Pedro Parqueador")
+    session.add(hero_deadpond)
+    session.add(hero_rusty_man)
+    session.add(hero_spider_boy)
+    session.commit()
+
+    session.refresh(hero_deadpond)
+    session.refresh(hero_rusty_man)
+    session.refresh(hero_spider_boy)
+
+    print("Created hero:", hero_deadpond)
+    print("Created hero:", hero_rusty_man)
+    print("Created hero:", hero_spider_boy)
+```
+
+### 10.6 通过关联属性查询数据
+
+```python
+with Session(engine) as session:
+    statement = select(Team).where(Team.name == "Preventers")
+    result = session.exec(statement)
+    team_preventers = result.one()
+
+    # 通过属性即可查到关联数据
+    print("Preventers heroes:", team_preventers.heroes)
+
+```
+
+### 10.7 通过关联属性更新数据
+
+```python
+with Session(engine) as session:
+    statement = select(Hero).where(Hero.name == "Spider-Boy")
+    result = session.exec(statement)
+    hero_spider_boy = result.one()
+
+    # 将关联属性置为 None
+    hero_spider_boy.team = None
+    session.add(hero_spider_boy)
+    session.commit()
+
+    session.refresh(hero_spider_boy)
+    print("Spider-Boy without team:", hero_spider_boy)
+```
+
+## 11. 级联操作
+
+### 11.1 父表删除时级联删除子表
+
+- 当 Team 中的数据被删除时，与之相关的 Hero 中的数据也会被删除
+
+```python
+class Team(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    name: str = Field(index=True)
+    headquarters: str
+
+    heroes: list["Hero"] = Relationship(back_populates="team", cascade_delete=True)
+
+
+class Hero(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    name: str = Field(index=True)
+    secret_name: str
+    age: int | None = Field(default=None, index=True)
+
+    team_id: int | None = Field(default=None, foreign_key="team.id", ondelete="CASCADE")
+    team: Team | None = Relationship(back_populates="heroes")
+```
+
+### 11.2 父表删除时，子表关联属性置为 None
+
+- 当 Team 中的数据被删除时，与之相关的 Hero 中的数据的 team_id 属性会被置为 None
+- 可以在 Team 中的 heroes 属性中添加 passive_deletes="all"
+- 默认为这种方式，但是如果直接通过 sql 语句删除数据，Hero 表中的 team_id 会继续保留不存在的 Team 的 id
+
+```python
+class Team(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    name: str = Field(index=True)
+    headquarters: str
+    heroes: list["Hero"] = Relationship(back_populates="team")
+
+
+class Hero(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    name: str = Field(index=True)
+    secret_name: str
+    age: int | None = Field(default=None, index=True)
+
+    team_id: int | None = Field(
+        default=None, foreign_key="team.id", ondelete="SET NULL"
+    )
+    team: Team | None = Relationship(back_populates="heroes")
+```
+
+### 11.3 父表删除时，如果子表中有与之关联的数据，会删除失败并报错
+
+- 在父表中 Relationship 中设置 passive_deletes="all"
+- 在子表中 Field 中设置 ondelete="RESTRICT"
+- 删除父表时，首先将子表中数据设置为 None，然后再删除父表
+
+```python
+class Team(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    name: str = Field(index=True)
+    headquarters: str
+
+    heroes: list["Hero"] = Relationship(back_populates="team", passive_deletes="all")
+
+
+class Hero(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    name: str = Field(index=True)
+    secret_name: str
+    age: int | None = Field(default=None, index=True)
+
+    team_id: int | None = Field(
+        default=None, foreign_key="team.id", ondelete="RESTRICT"
+    )
+    team: Team | None = Relationship(back_populates="heroes")
+
+with Session(engine) as session:
+    statement = select(Team).where(Team.name == "Wakaland")
+    team = session.exec(statement).one()
+    # 将子表中与之相关的数据的关联字段置为None
+    team.heroes.clear()
+    session.add(team)
+    session.commit()
+    session.refresh(team)
+    print("Team with removed heroes:", team)
+```
+
+## 12. 多对多关联
+
+### 12.1 建立多对多关联关系
+
+- 中间表中可以有多个主键
+- 实体表不再需要 foreign_key 字段
+- 实体表 Relationship 属性中增加 link_model 属性指向中间表
+
+```python
+# 中间表
+class HeroTeamLink(SQLModel, table=True):
+    team_id: int | None = Field(default=None, foreign_key="team.id", primary_key=True)
+    hero_id: int | None = Field(default=None, foreign_key="hero.id", primary_key=True)
+
+class Team(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    name: str = Field(index=True)
+    headquarters: str
+
+    heroes: list["Hero"] = Relationship(back_populates="teams", link_model=HeroTeamLink)
+
+class Hero(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    name: str = Field(index=True)
+    secret_name: str
+    age: int | None = Field(default=None, index=True)
+
+    teams: list[Team] = Relationship(back_populates="heroes", link_model=HeroTeamLink)
+```
+
+### 12.2 向多对多实体表中添加数据
+
+```python
+with Session(engine) as session:
+    team_preventers = Team(name="Preventers", headquarters="Sharp Tower")
+    team_z_force = Team(name="Z-Force", headquarters="Sister Margaret's Bar")
+
+    hero_deadpond = Hero(
+        name="Deadpond",
+        secret_name="Dive Wilson",
+        teams=[team_z_force, team_preventers],
+    )
+    hero_rusty_man = Hero(
+        name="Rusty-Man",
+        secret_name="Tommy Sharp",
+        age=48,
+        teams=[team_preventers],
+    )
+    hero_spider_boy = Hero(
+        name="Spider-Boy", secret_name="Pedro Parqueador", teams=[team_preventers]
+    )
+    session.add(hero_deadpond)
+    session.add(hero_rusty_man)
+    session.add(hero_spider_boy)
+    session.commit()
+
+    session.refresh(hero_deadpond)
+    session.refresh(hero_rusty_man)
+    session.refresh(hero_spider_boy)
+
+    print("Deadpond:", hero_deadpond)
+    print("Deadpond teams:", hero_deadpond.teams)
+    print("Rusty-Man:", hero_rusty_man)
+    print("Rusty-Man Teams:", hero_rusty_man.teams)
+    print("Spider-Boy:", hero_spider_boy)
+    print("Spider-Boy Teams:", hero_spider_boy.teams)
+```
+
+### 12.3 更新或删除多对多实体表中的数据
+
+```python
+with Session(engine) as session:
+    hero_spider_boy = session.exec(
+        select(Hero).where(Hero.name == "Spider-Boy")
+    ).one()
+    team_z_force = session.exec(select(Team).where(Team.name == "Z-Force")).one()
+
+    team_z_force.heroes.append(hero_spider_boy)
+    session.add(team_z_force)
+    session.commit()
+
+    print("Updated Spider-Boy's Teams:", hero_spider_boy.teams)
+    print("Z-Force heroes:", team_z_force.heroes)
+
+    hero_spider_boy.teams.remove(team_z_force)
+    session.add(team_z_force)
+    session.commit()
+
+    print("Reverted Z-Force's heroes:", team_z_force.heroes)
+    print("Reverted Spider-Boy's teams:", hero_spider_boy.teams)
+```
+
+### 12.4 在中间表中增加额外字段
+
+```python
+# 修改中间表
+class HeroTeamLink(SQLModel, table=True):
+    team_id: int | None = Field(default=None, foreign_key="team.id", primary_key=True)
+    hero_id: int | None = Field(default=None, foreign_key="hero.id", primary_key=True)
+    is_training: bool = False
+
+    team: "Team" = Relationship(back_populates="hero_links")
+    hero: "Hero" = Relationship(back_populates="team_links")
+
+# 修改实体表
+class Team(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    name: str = Field(index=True)
+    headquarters: str
+
+    hero_links: list[HeroTeamLink] = Relationship(back_populates="team")
+
+class Hero(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    name: str = Field(index=True)
+    secret_name: str
+    age: int | None = Field(default=None, index=True)
+
+    team_links: list[HeroTeamLink] = Relationship(back_populates="hero")
+
+
+# 添加初始数据
+with Session(engine) as session:
+        team_preventers = Team(name="Preventers", headquarters="Sharp Tower")
+        team_z_force = Team(name="Z-Force", headquarters="Sister Margaret's Bar")
+
+        hero_deadpond = Hero(
+            name="Deadpond",
+            secret_name="Dive Wilson",
+        )
+        hero_rusty_man = Hero(
+            name="Rusty-Man",
+            secret_name="Tommy Sharp",
+            age=48,
+        )
+        hero_spider_boy = Hero(
+            name="Spider-Boy",
+            secret_name="Pedro Parqueador",
+        )
+        deadpond_team_z_link = HeroTeamLink(team=team_z_force, hero=hero_deadpond)
+        deadpond_preventers_link = HeroTeamLink(
+            team=team_preventers, hero=hero_deadpond, is_training=True
+        )
+        spider_boy_preventers_link = HeroTeamLink(
+            team=team_preventers, hero=hero_spider_boy, is_training=True
+        )
+        rusty_man_preventers_link = HeroTeamLink(
+            team=team_preventers, hero=hero_rusty_man
+        )
+
+        session.add(deadpond_team_z_link)
+        session.add(deadpond_preventers_link)
+        session.add(spider_boy_preventers_link)
+        session.add(rusty_man_preventers_link)
+        session.commit()
+
+        for link in team_z_force.hero_links:
+            print("Z-Force hero:", link.hero, "is training:", link.is_training)
+
+        for link in team_preventers.hero_links:
+            print("Preventers hero:", link.hero, "is training:", link.is_training)
+
+# 添加数据
+with Session(engine) as session:
+    hero_spider_boy = session.exec(
+        select(Hero).where(Hero.name == "Spider-Boy")
+    ).one()
+    team_z_force = session.exec(select(Team).where(Team.name == "Z-Force")).one()
+
+    spider_boy_z_force_link = HeroTeamLink(
+        team=team_z_force, hero=hero_spider_boy, is_training=True
+    )
+    team_z_force.hero_links.append(spider_boy_z_force_link)
+    session.add(team_z_force)
+    session.commit()
+
+    print("Updated Spider-Boy's Teams:", hero_spider_boy.team_links)
+    print("Z-Force heroes:", team_z_force.hero_links)
+
+# 更新数据
+with Session(engine) as session:
+    # Code here omitted
+    for link in hero_spider_boy.team_links:
+        if link.team.name == "Preventers":
+            link.is_training = False
+    session.add(hero_spider_boy)
+    session.commit()
+    for link in hero_spider_boy.team_links:
+        print("Spider-Boy team:", link.team, "is training:", link.is_training)
+```
