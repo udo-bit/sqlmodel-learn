@@ -1,7 +1,7 @@
 from sqlmodel import SQLModel,create_engine,Session,select,Field, or_, and_, Relationship
 from typing import List,Optional
 
-engine = create_engine("mysql+pymysql://root:gxl911025@localhost:3306/test")
+engine = create_engine("mysql+pymysql://***:***@localhost:3306/test")
 
 class Team(SQLModel,table=True):
     id:Optional[int] = Field(default=None,primary_key=True)
